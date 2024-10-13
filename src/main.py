@@ -6,32 +6,13 @@ import websockets
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.responses import HTMLResponse
 from fastapi.websockets import WebSocketDisconnect
-from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
-from dotenv import load_dotenv
+from twilio.twiml.voice_response import VoiceResponse, Connect
 from fastapi.responses import JSONResponse
 from loguru import logger
+from core.settings import settings
+from prompts import SYSTEM_MESSAGE
 
-load_dotenv()
-# Configuration
-OPENAI_API_KEY = os.getenv(
-    'OPENAI_API_KEY')  # requires OpenAI Realtime API Access
-PORT = int(os.getenv('PORT', 5050))
-
-SYSTEM_MESSAGE = (
-    "You are a helpful and bubbly AI assistant who loves to chat about "
-    "anything the user is interested in and is prepared to offer them facts. "
-    "You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. "
-    "Always stay positive, but work in a joke when appropriate.")
-VOICE = 'alloy'
-LOG_EVENT_TYPES = [
-    'response.content.done', 'rate_limits.updated', 'response.done',
-    'input_audio_buffer.committed', 'input_audio_buffer.speech_stopped',
-    'input_audio_buffer.speech_started', 'session.created'
-]
 app = FastAPI()
-if not OPENAI_API_KEY:
-    raise ValueError(
-        'Missing the OpenAI API key. Please set it in the .env file.')
 
 
 async def send_session_update(openai_ws):
@@ -44,7 +25,7 @@ async def send_session_update(openai_ws):
             },
             "input_audio_format": "g711_ulaw",
             "output_audio_format": "g711_ulaw",
-            "voice": VOICE,
+            "voice": settings.VOICE,
             "instructions": SYSTEM_MESSAGE,
             "modalities": ["text", "audio"],
             "temperature": 0.8,
@@ -84,7 +65,7 @@ async def handle_media_stream(websocket: WebSocket):
     async with websockets.connect(
             'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01',
             extra_headers={
-                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
                 "OpenAI-Beta": "realtime=v1"
             }) as openai_ws:
         await send_session_update(openai_ws)
@@ -116,7 +97,7 @@ async def handle_media_stream(websocket: WebSocket):
             try:
                 async for openai_message in openai_ws:
                     response = json.loads(openai_message)
-                    if response['type'] in LOG_EVENT_TYPES:
+                    if response['type'] in settings.LOG_EVENT_TYPES:
                         logger.info("Received event: {} {}".format(response['type'], response))
                     if response['type'] == 'session.updated':
                         logger.info("Session updated successfully: {}".format(response))
@@ -146,4 +127,4 @@ async def handle_media_stream(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, host="0.0.0.0", port=settings.PORT)
