@@ -9,6 +9,7 @@ from fastapi.websockets import WebSocketDisconnect
 from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
 from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
+from loguru import logger
 
 load_dotenv()
 # Configuration
@@ -49,7 +50,7 @@ async def send_session_update(openai_ws):
             "temperature": 0.8,
         }
     }
-    print('Sending session update:', json.dumps(session_update))
+    logger.info('Sending session update: {}'.format(json.dumps(session_update)))
     await openai_ws.send(json.dumps(session_update))
 
 
@@ -78,7 +79,7 @@ async def handle_incoming_call(request: Request):
 @app.websocket("/media-stream")
 async def handle_media_stream(websocket: WebSocket):
     """Handle WebSocket connections between Twilio and OpenAI."""
-    print("Client connected")
+    logger.info("Client connected")
     await websocket.accept()
     async with websockets.connect(
             'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01',
@@ -103,9 +104,9 @@ async def handle_media_stream(websocket: WebSocket):
                         await openai_ws.send(json.dumps(audio_append))
                     elif data['event'] == 'start':
                         stream_sid = data['start']['streamSid']
-                        print(f"Incoming stream has started {stream_sid}")
+                        logger.info("Incoming stream has started {}".format(stream_sid))
             except WebSocketDisconnect:
-                print("Client disconnected.")
+                logger.info("Client disconnected.")
                 if openai_ws.open:
                     await openai_ws.close()
 
@@ -116,9 +117,9 @@ async def handle_media_stream(websocket: WebSocket):
                 async for openai_message in openai_ws:
                     response = json.loads(openai_message)
                     if response['type'] in LOG_EVENT_TYPES:
-                        print(f"Received event: {response['type']}", response)
+                        logger.info("Received event: {} {}".format(response['type'], response))
                     if response['type'] == 'session.updated':
-                        print("Session updated successfully:", response)
+                        logger.info("Session updated successfully: {}".format(response))
                     if response[
                             'type'] == 'response.audio.delta' and response.get(
                                 'delta'):
@@ -136,9 +137,9 @@ async def handle_media_stream(websocket: WebSocket):
                             }
                             await websocket.send_json(audio_delta)
                         except Exception as e:
-                            print(f"Error processing audio data: {e}")
+                            logger.info("Error processing audio data: {}".format(e))
             except Exception as e:
-                print(f"Error in send_to_twilio: {e}")
+                logger.info("Error in send_to_twilio: {}".format(e))
 
         await asyncio.gather(receive_from_twilio(), send_to_twilio())
 
